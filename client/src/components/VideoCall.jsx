@@ -35,66 +35,71 @@ export default function VideoCall() {
   }, []);
 
   useEffect(() => {
-    try {
     mountedRef.current = true;
     const isInitiator = callState?.direction === 'outgoing';
     const targetId = callState?.targetId || incomingCall?.from;
+    let stream = callState?.stream;
 
-    navigator.mediaDevices.getUserMedia({ audio: true, video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } })
-      .then((s) => {
-        if (!mountedRef.current) { s.getTracks().forEach((t) => t.stop()); return; }
-        streamRef.current = s;
-        if (localRef.current) localRef.current.srcObject = s;
+    const startPeer = (s) => {
+      streamRef.current = s;
+      if (localRef.current) localRef.current.srcObject = s;
 
-        const peer = new SimplePeer({
-          initiator: isInitiator,
-          trickle: true,
-          stream: s,
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-              { urls: 'stun:stun2.l.google.com:19302' },
-              { urls: 'stun:stun3.l.google.com:19302' },
-              { urls: 'stun:stun4.l.google.com:19302' },
-              {
-                urls: 'turn:relay.metered.ca:80',
-                username: '72c7338866a8534bc36219b4',
-                credential: 'HXbTw5w/hJ9AANks'
-              }
-            ]
-          }
-        });
-
-        peer.on('signal', (data) => {
-          const channel = data.type === 'offer' ? 'call:offer' :
-                          data.type === 'answer' ? 'call:answer' : 'call:ice-candidate';
-          const emitData = data.type === 'ice-candidate'
-            ? { targetId, candidate: data }
-            : { targetId, [channel === 'call:offer' ? 'offer' : 'answer']: data };
-          socket?.emit(channel, emitData);
-        });
-
-        peer.on('connect', () => { if (mountedRef.current) { setConnecting(false); setError(''); } });
-
-        peer.on('stream', (remoteStream) => {
-          if (remoteRef.current) {
-            remoteRef.current.srcObject = remoteStream;
-            remoteRef.current.play().catch(() => {});
-          }
-        });
-
-        peer.on('close', () => cleanup());
-        peer.on('error', (e) => { if (mountedRef.current) setError('Connection lost: ' + e.message); });
-
-        peerRef.current = peer;
-        flushIce();
-      })
-      .catch((e) => {
-        if (!mountedRef.current) return;
-        setError(e.name === 'NotAllowedError' ? 'Camera/mic access denied. Check browser permissions.' : e.name === 'NotFoundError' ? 'No camera/mic found.' : 'Media error: ' + e.message);
-        setTimeout(() => { if (mountedRef.current) cleanup(); }, 3000);
+      const peer = new SimplePeer({
+        initiator: isInitiator,
+        trickle: true,
+        stream: s,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            {
+              urls: 'turn:relay.metered.ca:80',
+              username: '72c7338866a8534bc36219b4',
+              credential: 'HXbTw5w/hJ9AANks'
+            }
+          ]
+        }
       });
+
+      peer.on('signal', (data) => {
+        const channel = data.type === 'offer' ? 'call:offer' :
+                        data.type === 'answer' ? 'call:answer' : 'call:ice-candidate';
+        const emitData = data.type === 'ice-candidate'
+          ? { targetId, candidate: data }
+          : { targetId, [channel === 'call:offer' ? 'offer' : 'answer']: data };
+        socket?.emit(channel, emitData);
+      });
+
+      peer.on('connect', () => { if (mountedRef.current) { setConnecting(false); setError(''); } });
+
+      peer.on('stream', (remoteStream) => {
+        if (remoteRef.current) {
+          remoteRef.current.srcObject = remoteStream;
+          remoteRef.current.play().catch(() => {});
+        }
+      });
+
+      peer.on('close', () => cleanup());
+      peer.on('error', (e) => { if (mountedRef.current) setError('Connection lost: ' + e.message); });
+
+      peerRef.current = peer;
+      flushIce();
+    };
+
+    if (stream) {
+      startPeer(stream);
+    } else {
+      navigator.mediaDevices.getUserMedia({ audio: true, video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } })
+        .then((s) => { if (mountedRef.current) startPeer(s); })
+        .catch((e) => {
+          if (!mountedRef.current) return;
+          setError(e.name === 'NotAllowedError' ? 'Camera/mic access denied. Check browser permissions.' : e.name === 'NotFoundError' ? 'No camera/mic found.' : 'Media error: ' + e.message);
+          setTimeout(() => { if (mountedRef.current) cleanup(); }, 3000);
+        });
+    }
 
     const handleSignal = (extract) => (data) => {
       if (data.from === targetId) {
@@ -119,7 +124,6 @@ export default function VideoCall() {
       if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
       iceQueue.current = [];
     };
-    } catch(e) { setError('Call error: ' + (e?.message || e)); }
   }, []);
 
   const replaceTrack = (newStream) => {

@@ -152,12 +152,19 @@ export default function ChatArea() {
     return () => socket.off('call:incoming', callIncoming);
   }, [socket]);
 
-  const startCall = (type) => {
+  const startCall = async (type) => {
     if (!currentDM || !socket) return;
     const targetId = currentDM.user_id || currentDM.id;
     if (!targetId) return;
-    useStore.getState().setCallState({ type, targetId, active: false, peerAccepted: false, direction: 'outgoing' });
-    socket.emit('call:start', { targetId, type });
+    try {
+      const constraints = type === 'video' ? { audio: true, video: true } : { audio: true };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      useStore.getState().setCallState({ type, targetId, stream, active: false, peerAccepted: false, direction: 'outgoing' });
+      socket.emit('call:start', { targetId, type });
+    } catch (e) {
+      const msg = e.name === 'NotAllowedError' ? 'Microphone/camera access denied' : e.name === 'NotFoundError' ? 'No microphone/camera found' : e.message;
+      alert('Media error: ' + msg);
+    }
   };
 
   const isOnline = (userId) => onlineUsers.includes(userId);

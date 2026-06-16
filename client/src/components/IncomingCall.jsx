@@ -5,10 +5,17 @@ import { Phone, PhoneOff, Video } from 'lucide-react';
 export default function IncomingCall() {
   const { incomingCall, setIncomingCall, setCallState, socket, user } = useStore();
 
-  const accept = (type) => {
-    setCallState({ type: type || incomingCall?.type || 'audio', targetId: incomingCall.from, active: false, peerAccepted: false, direction: 'incoming' });
-    socket?.emit('call:accept', { targetId: incomingCall.from });
-    setIncomingCall(null);
+  const accept = async (type) => {
+    try {
+      const t = type || incomingCall?.type || 'audio';
+      const constraints = t === 'video' ? { audio: true, video: true } : { audio: true };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      setCallState({ type: t, targetId: incomingCall.from, stream, active: false, peerAccepted: false, direction: 'incoming' });
+      socket?.emit('call:accept', { targetId: incomingCall.from });
+      setIncomingCall(null);
+    } catch (e) {
+      alert('Media error: ' + e.message);
+    }
   };
 
   const reject = () => {
