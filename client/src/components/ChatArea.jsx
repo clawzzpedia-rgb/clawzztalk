@@ -76,53 +76,45 @@ export default function ChatArea() {
     if (currentChannel) {
       setLoading(true);
       messageAPI.getChannel(currentChannel.id)
-        .then((res) => { setMessages(res.data); setLoading(false); })
+        .then((res) => { setMessages(Array.isArray(res.data) ? res.data : []); setLoading(false); })
         .catch(() => setLoading(false));
     } else if (currentDM) {
       setLoading(true);
       messageAPI.getDM(currentDM.dm_id)
-        .then((res) => { setMessages(res.data); setLoading(false); })
+        .then((res) => { setMessages(Array.isArray(res.data) ? res.data : []); setLoading(false); })
         .catch(() => setLoading(false));
     }
   }, [currentChannel?.id, currentDM?.dm_id]);
 
   const handlerRef = useRef(null);
 
+  const safeMsg = useCallback((prev, msg) => {
+    if (!Array.isArray(prev)) return [msg];
+    if (prev.some(m => m.id === msg.id)) return prev;
+    return [...prev, msg];
+  }, []);
+
   useEffect(() => {
     if (!socket) return;
-
-    if (handlerRef.current) {
-      socket.off('message:new', handlerRef.current);
-      socket.off('dm:new', handlerRef.current);
-      socket.off('typing:update', handlerRef.current);
-    }
+    if (handlerRef.current) socket.off('message:new', handlerRef.current);
 
     handlerRef.current = (msg) => {
-      if (msg.channel_id && msg.channel_id === currentChannel?.id) {
-        setMessages((prev) => { if (prev.some(m => m.id === msg.id)) return prev; return [...prev, msg]; });
-        if (msg.user_id !== user?.id) {
-          playMsgSound();
-          notifyUser(msg.username || 'Someone', msg.content || 'Sent a file');
-        }
-      } else if (msg.dm_id && msg.dm_id === currentDM?.dm_id) {
-        setMessages((prev) => { if (prev.some(m => m.id === msg.id)) return prev; return [...prev, msg]; });
-        if (msg.user_id !== user?.id) {
-          playMsgSound();
-          notifyUser(msg.username || 'Someone', msg.content || 'Sent a file');
-        }
+      if (!msg) return;
+      const isChannel = msg.channel_id && msg.channel_id === currentChannel?.id;
+      const isDM = msg.dm_id && msg.dm_id === currentDM?.dm_id;
+      if (!isChannel && !isDM) return;
+
+      setMessages((prev) => safeMsg(prev, msg));
+
+      if (msg.user_id !== user?.id) {
+        playMsgSound();
+        if (msg.content) notifyUser(msg.username || 'Message', msg.content);
       }
     };
 
     socket.on('message:new', handlerRef.current);
-    socket.on('dm:new', handlerRef.current);
-
-    return () => {
-      if (handlerRef.current) {
-        socket.off('message:new', handlerRef.current);
-        socket.off('dm:new', handlerRef.current);
-      }
-    };
-  }, [socket, currentChannel?.id, currentDM?.dm_id, user?.id]);
+    return () => { socket.off('message:new', handlerRef.current); };
+  }, [socket, currentChannel?.id, currentDM?.dm_id, user?.id, safeMsg]);
 
   useEffect(() => {
     if (!socket) return;
@@ -187,13 +179,13 @@ export default function ChatArea() {
       <div className="flex-1 overflow-y-auto px-4 py-2">
         {loading && <div className="text-center text-[#6d6f78] text-sm py-8">Loading messages...</div>}
 
-        {messages.length === 0 && !loading && (
+        {!loading && (!Array.isArray(messages) || messages.length === 0) && (
           <div className="text-center text-[#6d6f78] text-sm py-8">
             {currentChannel ? `#${currentChannel.name}` : currentDM?.username} — No messages yet
           </div>
         )}
 
-        {messages.map((msg) => (
+        {Array.isArray(messages) && messages.map((msg) => (
           <Message key={msg.id} message={msg} />
         ))}
         <div ref={bottomRef} />
