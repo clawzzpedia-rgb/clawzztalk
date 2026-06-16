@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import useStore from '../store';
 import { messageAPI, uploadAPI } from '../api';
 import EmojiPicker from './EmojiPicker';
-import { Smile, Plus, X } from 'lucide-react';
+import { Smile, Plus } from 'lucide-react';
 
 const EMOJIS = ['😀','😁','😂','🤣','😃','😄','😅','😆','😉','😊','😋','😎','😍','🥰','😘','😗','😙','😚','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','🙄','😏','😣','😥','😮','🤐','😯','😪','😫','😴','😌','😛','😜','😝','🤤','😒','😓','😔','😕','🙃','🤑','😲','☹️','😞','😟','😤','😢','😭','😦','😧','😨','😩','🤯','😬','😰','😱','🥵','🥶','😳','🤪','😵','😡','😠','🤬','👍','👎','👊','✊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✌️','🤞','💪','🔥','❤️','💔','💖','💙','💚','💛','💜','🖤','💯','✨','⭐','🌟','💫','🎉','🎊','🎈','🎁','🎀','🌸','🌺','🌻','🌹','🌷','💐','🍕','🍔','🌮','🍣','🍩','🍪','☕','🍺','🍻','🥂','🎵','🎶','🎤','🎧','📱','💻','⌚️','📸','🎮','🕹️','🎲','🏆','🥇','🥈','🥉','⚽️','🏀','🏈','⚾️','🎾','🚗','🚕','🚙','🚀','✈️','🏠','🌈','☀️','🌙','💡','📚','🔑','🛡️','💎','🧊','🗿','🎭','🎨'];
 
@@ -13,36 +13,74 @@ export default function MessageInput() {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
   const typingTimeout = useRef(null);
+  const [sending, setSending] = useState(false);
 
-  const handleTyping = () => {
+  const handleTyping = useCallback(() => {
     if (!currentChannel || !socket) return;
     socket.emit('typing:start', { channel_id: currentChannel.id });
     clearTimeout(typingTimeout.current);
     typingTimeout.current = setTimeout(() => {
       socket.emit('typing:stop', { channel_id: currentChannel.id });
     }, 2000);
-  };
+  }, [currentChannel, socket]);
 
-  const handleSend = async () => {
-    if (!text.trim()) return;
+  const addOptimistic = useCallback((msg) => {
+    const store = useStore.getState();
+    const { messages } = store;
+    if (!Array.isArray(messages)) { store.setMessages([msg]); return; }
+    if (messages.some(m => m.id === msg.id)) return;
+    store.setMessages([...messages, msg]);
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    if (!text.trim() || sending) return;
     const content = text;
     setText('');
+    setSending(true);
 
-    try {
-      if (currentChannel) {
+    const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+
+    if (currentChannel) {
+      addOptimistic({
+        id: tempId, channel_id: currentChannel.id, user_id: user?.id,
+        content, file_url: null, file_type: null, created_at: new Date().toISOString(),
+        username: user?.username, avatar: user?.avatar
+      });
+
+      try {
         const res = await messageAPI.sendChannel(currentChannel.id, { content });
         socket?.emit('message:send', { ...res.data, channel_id: currentChannel.id });
-      } else if (currentDM) {
+        const store = useStore.getState();
+        store.setMessages((store.messages || []).map(m => m.id === tempId ? res.data : m));
+      } catch (e) {
+        const store = useStore.getState();
+        store.setMessages((store.messages || []).filter(m => m.id !== tempId));
+        setText(content);
+        console.error('Send failed:', e);
+      }
+    } else if (currentDM) {
+      addOptimistic({
+        id: tempId, dm_id: currentDM.dm_id, user_id: user?.id,
+        content, file_url: null, file_type: null, created_at: new Date().toISOString(),
+        username: user?.username, avatar: user?.avatar
+      });
+
+      try {
         const res = await messageAPI.sendDM(currentDM.dm_id, { content });
         socket?.emit('dm:send', { ...res.data, dm_id: currentDM.dm_id });
+        const store = useStore.getState();
+        store.setMessages((store.messages || []).map(m => m.id === tempId ? res.data : m));
+      } catch (e) {
+        const store = useStore.getState();
+        store.setMessages((store.messages || []).filter(m => m.id !== tempId));
+        setText(content);
+        console.error('Send failed:', e);
       }
-    } catch (e) {
-      console.error('Send failed:', e);
-      setText(content);
     }
-  };
+    setSending(false);
+  }, [text, sending, currentChannel, currentDM, user, socket, addOptimistic]);
 
-  const handleFileSelect = async (e) => {
+  const handleFileSelect = useCallback(async (e) => {
     const selected = Array.from(e.target.files);
     e.target.value = '';
     if (selected.length === 0) return;
@@ -50,12 +88,12 @@ export default function MessageInput() {
     for (const file of selected) {
       setUploading(true);
       try {
-        const res = await uploadAPI.upload(file);
+        const uploadRes = await uploadAPI.upload(file);
         if (currentChannel) {
-          const msg = await messageAPI.sendChannel(currentChannel.id, { content: '', file_url: res.data.file_url, file_type: res.data.file_type });
+          const msg = await messageAPI.sendChannel(currentChannel.id, { content: '', file_url: uploadRes.data.file_url, file_type: uploadRes.data.file_type });
           socket?.emit('message:send', { ...msg.data, channel_id: currentChannel.id });
         } else if (currentDM) {
-          const msg = await messageAPI.sendDM(currentDM.dm_id, { content: '', file_url: res.data.file_url, file_type: res.data.file_type });
+          const msg = await messageAPI.sendDM(currentDM.dm_id, { content: '', file_url: uploadRes.data.file_url, file_type: uploadRes.data.file_type });
           socket?.emit('dm:send', { ...msg.data, dm_id: currentDM.dm_id });
         }
       } catch (err) {
@@ -63,7 +101,7 @@ export default function MessageInput() {
       }
     }
     setUploading(false);
-  };
+  }, [currentChannel, currentDM, socket]);
 
   const addEmoji = (emoji) => {
     setText((prev) => prev + emoji);
@@ -99,7 +137,7 @@ export default function MessageInput() {
             placeholder={uploading ? 'Uploading...' : `Message ${currentChannel ? '#' + currentChannel.name : currentDM?.username || ''}`}
             className="w-full bg-transparent text-white text-sm py-2 resize-none focus:outline-none max-h-32 placeholder-[#6d6f78]"
             rows={1}
-            disabled={uploading}
+            disabled={uploading || sending}
           />
         </div>
 

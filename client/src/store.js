@@ -69,8 +69,13 @@ const useStore = create((set, get) => ({
 
   setServers: (servers) => set({ servers }),
   setCurrentServer: (server) => {
-    set({ currentServer: server, currentChannel: server?.channels?.[0] || null, currentDM: null, messages: [] });
-    if (server) get().socket?.emit('join:server', server.id);
+    const firstChan = server?.channels?.[0] || null;
+    set({ currentServer: server, currentChannel: firstChan, currentDM: null, messages: [] });
+    if (server) {
+      const s = get().socket;
+      s?.emit('join:server', server.id);
+      if (firstChan) s?.emit('join:channel', firstChan.id);
+    }
   },
   setCurrentChannel: (channel) => {
     set({ currentChannel: channel, currentDM: null, messages: [] });

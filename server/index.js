@@ -50,11 +50,11 @@ io.on('connection', (socket) => {
   socket.on('join:dm', (dmId) => socket.join(`dm:${dmId}`));
 
   socket.on('message:send', (data) => {
-    io.to(`channel:${data.channel_id}`).emit('message:new', data);
+    socket.to(`channel:${data.channel_id}`).emit('message:new', data);
   });
 
   socket.on('dm:send', (data) => {
-    io.to(`dm:${data.dm_id}`).emit('dm:new', data);
+    socket.to(`dm:${data.dm_id}`).emit('dm:new', data);
   });
 
   socket.on('message:delete', (data) => {

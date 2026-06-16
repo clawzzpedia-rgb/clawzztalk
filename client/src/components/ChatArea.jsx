@@ -96,7 +96,7 @@ export default function ChatArea() {
 
   useEffect(() => {
     if (!socket) return;
-    if (handlerRef.current) socket.off('message:new', handlerRef.current);
+    if (handlerRef.current) { socket.off('message:new', handlerRef.current); socket.off('dm:new', handlerRef.current); }
 
     handlerRef.current = (msg) => {
       if (!msg) return;
@@ -113,7 +113,8 @@ export default function ChatArea() {
     };
 
     socket.on('message:new', handlerRef.current);
-    return () => { socket.off('message:new', handlerRef.current); };
+    socket.on('dm:new', handlerRef.current);
+    return () => { socket.off('message:new', handlerRef.current); socket.off('dm:new', handlerRef.current); };
   }, [socket, currentChannel?.id, currentDM?.dm_id, user?.id, safeMsg]);
 
   useEffect(() => {
