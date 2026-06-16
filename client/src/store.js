@@ -86,7 +86,7 @@ const useStore = create((set, get) => ({
     if (dm) get().socket?.emit('join:dm', dm.dm_id);
   },
   setDMs: (dms) => set({ dms }),
-  setMessages: (messages) => set({ messages }),
+  setMessages: (messages) => set((state) => ({ messages: typeof messages === 'function' ? messages(state.messages) : messages })),
   setOnlineUsers: (users) => set({ onlineUsers: users }),
   setLoading: (loading) => set({ loading }),
   setCallState: (callState) => set({ callState }),
