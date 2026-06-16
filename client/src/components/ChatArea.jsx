@@ -154,7 +154,8 @@ export default function ChatArea() {
 
   const startCall = (type) => {
     if (!currentDM || !socket) return;
-    const targetId = currentDM.user_id;
+    const targetId = currentDM.user_id || currentDM.id;
+    if (!targetId) return;
     useStore.getState().setCallState({ type, targetId, active: false, peerAccepted: false, direction: 'outgoing' });
     socket.emit('call:start', { targetId, type });
   };

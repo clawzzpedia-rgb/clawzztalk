@@ -27,6 +27,7 @@ export default function VoiceCall() {
   }, [setCallState, setIncomingCall]);
 
   useEffect(() => {
+    try {
     mountedRef.current = true;
     const isInitiator = callState?.direction === 'outgoing';
     const targetId = callState?.targetId || incomingCall?.from;
@@ -109,6 +110,7 @@ export default function VoiceCall() {
       if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
       iceQueue.current = [];
     };
+    } catch(e) { setError('Call error: ' + (e?.message || e)); }
   }, []);
 
   const endCall = useCallback(() => {

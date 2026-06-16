@@ -58,8 +58,9 @@ export default function MainApp() {
 
   const startDM = async (userId) => {
     const res = await userAPI.startDM(userId);
-    setDMs([...dms, { dm_id: res.data.dm_id, ...res.data.user }]);
-    setCurrentDM({ dm_id: res.data.dm_id, ...res.data.user });
+    const u = res.data.user;
+    setDMs([...dms, { dm_id: res.data.dm_id, user_id: u.id, username: u.username, avatar: u.avatar, status: u.status }]);
+    setCurrentDM({ dm_id: res.data.dm_id, user_id: u.id, username: u.username, avatar: u.avatar, status: u.status });
     setShowUserSearch(false);
     setUserQuery('');
   };

@@ -35,6 +35,7 @@ export default function VideoCall() {
   }, []);
 
   useEffect(() => {
+    try {
     mountedRef.current = true;
     const isInitiator = callState?.direction === 'outgoing';
     const targetId = callState?.targetId || incomingCall?.from;
@@ -118,6 +119,7 @@ export default function VideoCall() {
       if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
       iceQueue.current = [];
     };
+    } catch(e) { setError('Call error: ' + (e?.message || e)); }
   }, []);
 
   const replaceTrack = (newStream) => {
