@@ -23,6 +23,8 @@ app.use('/uploads', express.static(uploadsDir));
 initDb();
 
 const activeUsers = new Map();
+app.set('io', io);
+app.set('activeUsers', activeUsers);
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/servers', require('./routes/servers'));

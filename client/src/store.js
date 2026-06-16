@@ -18,6 +18,7 @@ const useStore = create((set, get) => ({
   showAdmin: false,
   profileUser: null,
   recordingChannels: [],
+  unreadCounts: {},
   adminUsers: [],
   adminServers: [],
   adminLogs: [],
@@ -34,7 +35,7 @@ const useStore = create((set, get) => ({
     localStorage.removeItem('token');
     const s = get().socket;
     if (s) { s.removeAllListeners(); s.disconnect(); }
-    set({ user: null, token: null, servers: [], currentServer: null, currentChannel: null, currentDM: null, dms: [], messages: [], socket: null, showAdmin: false, callState: null, incomingCall: null });
+    set({ user: null, token: null, servers: [], currentServer: null, currentChannel: null, currentDM: null, dms: [], messages: [], socket: null, showAdmin: false, callState: null, incomingCall: null, unreadCounts: {} });
   },
 
   connectSocket: () => {
@@ -57,6 +58,26 @@ const useStore = create((set, get) => ({
     socket.on('call:rejected', () => set({ callState: null, incomingCall: null }));
     socket.on('users:online', (users) => set({ onlineUsers: users }));
 
+    socket.on('friend:accepted', (data) => {
+      const s = get();
+      const exists = s.dms.find(d => d.user_id === data.user.id);
+      if (!exists) {
+        set({ dms: [...s.dms, { dm_id: data.dm_id, user_id: data.user.id, username: data.user.username, avatar: data.user.avatar, status: data.user.status }] });
+      }
+    });
+
+    const trackUnread = (msg) => {
+      if (!msg) return;
+      const st = get();
+      if (msg.channel_id && msg.channel_id !== st.currentChannel?.id) {
+        set({ unreadCounts: { ...st.unreadCounts, [msg.channel_id]: (st.unreadCounts[msg.channel_id] || 0) + 1 } });
+      } else if (msg.dm_id && msg.dm_id !== st.currentDM?.dm_id) {
+        set({ unreadCounts: { ...st.unreadCounts, [msg.dm_id]: (st.unreadCounts[msg.dm_id] || 0) + 1 } });
+      }
+    };
+    socket.on('message:new', trackUnread);
+    socket.on('dm:new', trackUnread);
+
     socket.on('admin:recording-start', (data) => {
       set((s) => ({ recordingChannels: [...s.recordingChannels.filter(r => r.channel_id !== data.channel_id), data] }));
     });
@@ -71,7 +92,11 @@ const useStore = create((set, get) => ({
   setServers: (servers) => set({ servers }),
   setCurrentServer: (server) => {
     const firstChan = server?.channels?.[0] || null;
-    set({ currentServer: server, currentChannel: firstChan, currentDM: null, messages: [] });
+    set((s) => {
+      const u = { ...s.unreadCounts };
+      if (firstChan) delete u[firstChan.id];
+      return { currentServer: server, currentChannel: firstChan, currentDM: null, messages: [], unreadCounts: u };
+    });
     if (server) {
       const s = get().socket;
       s?.emit('join:server', server.id);
@@ -79,11 +104,19 @@ const useStore = create((set, get) => ({
     }
   },
   setCurrentChannel: (channel) => {
-    set({ currentChannel: channel, currentDM: null, messages: [] });
+    set((s) => {
+      const u = { ...s.unreadCounts };
+      if (channel) delete u[channel.id];
+      return { currentChannel: channel, currentDM: null, messages: [], unreadCounts: u };
+    });
     if (channel) get().socket?.emit('join:channel', channel.id);
   },
   setCurrentDM: (dm) => {
-    set({ currentDM: dm, currentChannel: null, messages: [] });
+    set((s) => {
+      const u = { ...s.unreadCounts };
+      if (dm) delete u[dm.dm_id];
+      return { currentDM: dm, currentChannel: null, messages: [], unreadCounts: u };
+    });
     if (dm) get().socket?.emit('join:dm', dm.dm_id);
   },
   setDMs: (dms) => set({ dms }),
@@ -94,6 +127,7 @@ const useStore = create((set, get) => ({
   setIncomingCall: (incomingCall) => set({ incomingCall }),
   setShowAdmin: (showAdmin) => set({ showAdmin }),
   setProfileUser: (profileUser) => set({ profileUser }),
+  setUnreadCounts: (unreadCounts) => set({ unreadCounts }),
 
   setAdminUsers: (adminUsers) => set({ adminUsers }),
   setAdminServers: (adminServers) => set({ adminServers }),

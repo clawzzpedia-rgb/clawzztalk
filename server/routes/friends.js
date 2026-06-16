@@ -89,7 +89,37 @@ router.post('/accept/:userId', authenticateToken, (req, res) => {
       WHERE friend_id = ? AND user_id = ? AND status = 'pending'
     `).run(req.user.id, req.params.userId);
     if (result.changes === 0) return res.status(404).json({ error: 'No pending request found' });
-    res.json({ status: 'accepted' });
+
+    let dmId;
+    const existing = db.prepare(`
+      SELECT dc.id FROM dm_channels dc
+      JOIN dm_members dm1 ON dc.id = dm1.dm_id AND dm1.user_id = ?
+      JOIN dm_members dm2 ON dc.id = dm2.dm_id AND dm2.user_id = ?
+    `).get(req.user.id, req.params.userId);
+
+    if (existing) {
+      dmId = existing.id;
+    } else {
+      dmId = uuidv4();
+      db.prepare('INSERT INTO dm_channels (id) VALUES (?)').run(dmId);
+      db.prepare('INSERT INTO dm_members (id, dm_id, user_id) VALUES (?, ?, ?)').run(uuidv4(), dmId, req.user.id);
+      db.prepare('INSERT INTO dm_members (id, dm_id, user_id) VALUES (?, ?, ?)').run(uuidv4(), dmId, req.params.userId);
+    }
+
+    const io = req.app.get('io');
+    const activeUsers = req.app.get('activeUsers');
+    const acceptor = db.prepare('SELECT id, username, avatar, status FROM users WHERE id = ?').get(req.user.id);
+    const requester = db.prepare('SELECT id, username, avatar, status FROM users WHERE id = ?').get(req.params.userId);
+
+    const toUser = (userId, event, data) => {
+      const target = activeUsers.get(userId);
+      if (target) io.to(target.socketId).emit(event, data);
+    };
+
+    toUser(req.user.id, 'friend:accepted', { dm_id: dmId, user: requester });
+    toUser(req.params.userId, 'friend:accepted', { dm_id: dmId, user: acceptor });
+
+    res.json({ status: 'accepted', dm_id: dmId });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

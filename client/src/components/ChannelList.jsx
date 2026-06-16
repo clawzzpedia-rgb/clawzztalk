@@ -4,7 +4,7 @@ import { serverAPI, userAPI, channelAPI, friendAPI } from '../api';
 import { Hash, Plus, ChevronDown, ChevronRight, MessageCircle, Phone, Video, Search, UserPlus, LogOut, Clock, Check, X, UserCheck, User } from 'lucide-react';
 
 export default function ChannelList() {
-  const { currentServer, setCurrentChannel, currentChannel, dms, setCurrentDM, currentDM, setDMs, user, setCurrentServer, servers, setServers, socket, onlineUsers, logout } = useStore();
+  const { currentServer, setCurrentChannel, currentChannel, dms, setCurrentDM, currentDM, setDMs, user, setCurrentServer, servers, setServers, socket, onlineUsers, logout, unreadCounts } = useStore();
   const [showCreate, setShowCreate] = useState(false);
   const [chanName, setChanName] = useState('');
   const [showAddFriend, setShowAddFriend] = useState(false);
@@ -100,7 +100,10 @@ export default function ChannelList() {
                 }`}
               >
                 <Hash className="w-4 h-4 mr-1.5 flex-shrink-0" />
-                <span className="text-sm truncate">{ch.name}</span>
+                <span className="text-sm truncate flex-1">{ch.name}</span>
+                {unreadCounts[ch.id] > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-bold min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center flex-shrink-0">{unreadCounts[ch.id] > 99 ? '99+' : unreadCounts[ch.id]}</span>
+                )}
               </div>
             ))}
 
@@ -204,7 +207,10 @@ export default function ChannelList() {
                     <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-[#2b2d31]" />
                   )}
                 </div>
-                <span className="text-sm truncate">{dm.username}</span>
+                <span className="text-sm truncate flex-1">{dm.username}</span>
+                {unreadCounts[dm.dm_id] > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-bold min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center flex-shrink-0">{unreadCounts[dm.dm_id] > 99 ? '99+' : unreadCounts[dm.dm_id]}</span>
+                )}
               </div>
             ))}
           </div>
