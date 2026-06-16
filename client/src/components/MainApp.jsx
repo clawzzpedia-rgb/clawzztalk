@@ -8,10 +8,11 @@ import VoiceCall from './VoiceCall';
 import VideoCall from './VideoCall';
 import IncomingCall from './IncomingCall';
 import AdminPanel from './AdminPanel';
+import UserProfile from './UserProfile';
 import { Shield, Plus, Compass } from 'lucide-react';
 
 export default function MainApp() {
-  const { user, servers, setServers, setCurrentServer, currentServer, currentChannel, currentDM, dms, setDMs, callState, incomingCall, socket, logout, setCurrentDM, showAdmin, setShowAdmin } = useStore();
+  const { user, servers, setServers, setCurrentServer, currentServer, currentChannel, currentDM, dms, setDMs, callState, incomingCall, socket, logout, setCurrentDM, showAdmin, setShowAdmin, profileUser } = useStore();
   const [showCreate, setShowCreate] = useState(false);
   const [serverName, setServerName] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -105,6 +106,7 @@ export default function MainApp() {
           {callState?.type === 'audio' && <VoiceCall />}
           {callState?.type === 'video' && <VideoCall />}
           {incomingCall && <IncomingCall />}
+          {profileUser && <UserProfile />}
 
           {showCreate && (
             <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowCreate(false)}>

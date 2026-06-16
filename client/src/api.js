@@ -61,4 +61,15 @@ export const userAPI = {
   startDM: (id) => API.post(`/users/dm/${id}`)
 };
 
+export const friendAPI = {
+  list: () => API.get('/friends'),
+  pending: () => API.get('/friends/pending'),
+  sent: () => API.get('/friends/sent'),
+  status: (userId) => API.get(`/friends/status/${userId}`),
+  request: (userId) => API.post(`/friends/request/${userId}`),
+  accept: (userId) => API.post(`/friends/accept/${userId}`),
+  reject: (userId) => API.post(`/friends/reject/${userId}`),
+  remove: (userId) => API.delete(`/friends/${userId}`)
+};
+
 export default API;

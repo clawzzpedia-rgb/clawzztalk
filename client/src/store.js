@@ -16,6 +16,7 @@ const useStore = create((set, get) => ({
   callState: null,
   incomingCall: null,
   showAdmin: false,
+  profileUser: null,
   recordingChannels: [],
   adminUsers: [],
   adminServers: [],
@@ -92,6 +93,7 @@ const useStore = create((set, get) => ({
   setCallState: (callState) => set({ callState }),
   setIncomingCall: (incomingCall) => set({ incomingCall }),
   setShowAdmin: (showAdmin) => set({ showAdmin }),
+  setProfileUser: (profileUser) => set({ profileUser }),
 
   setAdminUsers: (adminUsers) => set({ adminUsers }),
   setAdminServers: (adminServers) => set({ adminServers }),

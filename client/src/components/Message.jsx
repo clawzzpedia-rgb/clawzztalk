@@ -3,7 +3,7 @@ import useStore from '../store';
 import { Trash2, FileText } from 'lucide-react';
 
 export default function Message({ message }) {
-  const { user, socket } = useStore();
+  const { user, socket, setProfileUser } = useStore();
   const isOwn = message.user_id === user?.id;
   const time = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -17,7 +17,7 @@ export default function Message({ message }) {
 
   return (
     <div className={`flex gap-3 px-4 py-1.5 hover:bg-[#2e3035] group message-fade-in ${isOwn ? '' : ''}`}>
-      <div className="w-10 h-10 rounded-full bg-[#5865f2] flex items-center justify-center text-white text-sm font-bold flex-shrink-0 mt-0.5">
+      <div onClick={() => setProfileUser({ id: message.user_id, username: message.username, avatar: message.avatar, status: message.status || 'offline' })} className="w-10 h-10 rounded-full bg-[#5865f2] flex items-center justify-center text-white text-sm font-bold flex-shrink-0 mt-0.5 cursor-pointer hover:opacity-80 transition">
         {message.username?.[0]?.toUpperCase() || '?'}
       </div>
       <div className="flex-1 min-w-0">

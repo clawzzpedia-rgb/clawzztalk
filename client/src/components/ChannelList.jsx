@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { serverAPI, userAPI, channelAPI } from '../api';
-import { Hash, Plus, ChevronDown, ChevronRight, MessageCircle, Phone, Video, Search, UserPlus, LogOut } from 'lucide-react';
+import { serverAPI, userAPI, channelAPI, friendAPI } from '../api';
+import { Hash, Plus, ChevronDown, ChevronRight, MessageCircle, Phone, Video, Search, UserPlus, LogOut, Clock, Check, X, UserCheck, User } from 'lucide-react';
 
 export default function ChannelList() {
   const { currentServer, setCurrentChannel, currentChannel, dms, setCurrentDM, currentDM, setDMs, user, setCurrentServer, servers, setServers, socket, onlineUsers, logout } = useStore();
@@ -10,10 +10,34 @@ export default function ChannelList() {
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendQuery, setFriendQuery] = useState('');
   const [friendResults, setFriendResults] = useState([]);
+  const [showPending, setShowPending] = useState(false);
+  const [pendingReqs, setPendingReqs] = useState([]);
+  const [loadingReq, setLoadingReq] = useState(false);
+  const [friendStatuses, setFriendStatuses] = useState({});
 
   useEffect(() => {
     userAPI.getDM().then((res) => setDMs(res.data));
+    fetchPending();
   }, []);
+
+  const fetchPending = async () => {
+    try {
+      const res = await friendAPI.pending();
+      setPendingReqs(res.data);
+    } catch (_) {}
+  };
+
+  const acceptReq = async (userId) => {
+    setLoadingReq(true);
+    try { await friendAPI.accept(userId); fetchPending(); } catch (_) {}
+    setLoadingReq(false);
+  };
+
+  const rejectReq = async (userId) => {
+    setLoadingReq(true);
+    try { await friendAPI.reject(userId); fetchPending(); } catch (_) {}
+    setLoadingReq(false);
+  };
 
   const createChannel = async () => {
     if (!chanName.trim() || !currentServer) return;
@@ -29,15 +53,20 @@ export default function ChannelList() {
     if (q.length < 1) { setFriendResults([]); return; }
     const res = await userAPI.search(q);
     setFriendResults(res.data);
+    const statuses = {};
+    await Promise.all(res.data.map(async (u) => {
+      try { const s = await friendAPI.status(u.id); statuses[u.id] = s.data.status; } catch (_) {}
+    }));
+    setFriendStatuses(statuses);
   };
 
   const startDM = async (userId) => {
     const res = await userAPI.startDM(userId);
+    const u = res.data.user;
+    const dm = { dm_id: res.data.dm_id, user_id: u.id, username: u.username, avatar: u.avatar, status: u.status };
     const exists = dms.find(d => d.user_id === userId);
-    if (!exists) {
-      setDMs([...dms, { dm_id: res.data.dm_id, ...res.data.user }]);
-    }
-    setCurrentDM({ dm_id: res.data.dm_id, ...res.data.user });
+    if (!exists) { setDMs([...dms, dm]); }
+    setCurrentDM(dm);
     setShowAddFriend(false);
     setFriendQuery('');
   };
@@ -116,14 +145,50 @@ export default function ChannelList() {
 
           <button
             onClick={() => setShowAddFriend(true)}
-            className="mx-2 mt-2 flex items-center gap-2 px-2 py-1.5 rounded text-[#6d6f78] hover:bg-[#35373c] hover:text-[#dbdee1] transition text-sm mb-2"
+            className="mx-2 mt-2 flex items-center gap-2 px-2 py-1.5 rounded text-[#6d6f78] hover:bg-[#35373c] hover:text-[#dbdee1] transition text-sm"
           >
             <UserPlus className="w-4 h-4" />
             <span>Add Friend</span>
           </button>
 
+          <button
+            onClick={() => setShowPending(!showPending)}
+            className="mx-2 mt-1 flex items-center gap-2 px-2 py-1.5 rounded text-[#6d6f78] hover:bg-[#35373c] hover:text-[#dbdee1] transition text-sm"
+          >
+            <Clock className="w-4 h-4" />
+            <span>Pending</span>
+            {pendingReqs.length > 0 && (
+              <span className="ml-auto bg-[#5865f2] text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">{pendingReqs.length}</span>
+            )}
+          </button>
+
+          {showPending && (
+            <div className="mx-2 mb-2 bg-[#1e1f22] rounded-lg overflow-hidden">
+              {pendingReqs.length === 0 ? (
+                <p className="text-[#6d6f78] text-xs text-center py-3">No pending requests</p>
+              ) : (
+                <div className="max-h-48 overflow-y-auto">
+                  {pendingReqs.map((req) => (
+                    <div key={req.request_id} className="flex items-center gap-2 px-3 py-2 hover:bg-[#35373c]">
+                      <div className="w-8 h-8 rounded-full bg-[#5865f2] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                        {req.username?.[0]?.toUpperCase()}
+                      </div>
+                      <span className="text-white text-sm flex-1 truncate">{req.username}</span>
+                      <button onClick={() => acceptReq(req.id)} disabled={loadingReq} className="p-1.5 bg-green-500/20 hover:bg-green-500/40 rounded text-green-400 transition disabled:opacity-50" title="Accept">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => rejectReq(req.id)} disabled={loadingReq} className="p-1.5 bg-red-500/20 hover:bg-red-500/40 rounded text-red-400 transition disabled:opacity-50" title="Reject">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto px-2">
-            {dms.map((dm) => (
+              {dms.map((dm) => (
               <div
                 key={dm.dm_id}
                 onClick={() => setCurrentDM(dm)}
@@ -132,7 +197,7 @@ export default function ChannelList() {
                 }`}
               >
                 <div className="relative flex-shrink-0">
-                  <div className="w-8 h-8 rounded-full bg-[#5865f2] flex items-center justify-center text-white text-xs font-bold">
+                  <div onClick={(e) => { e.stopPropagation(); useStore.getState().setProfileUser({ id: dm.user_id, username: dm.username, avatar: dm.avatar, status: dm.status || 'offline' }); }} className="w-8 h-8 rounded-full bg-[#5865f2] flex items-center justify-center text-white text-xs font-bold cursor-pointer hover:opacity-80 transition">
                     {dm.username?.[0]?.toUpperCase()}
                   </div>
                   {(dm.status === 'online' || isOnline(dm.user_id)) && (
@@ -171,17 +236,26 @@ export default function ChannelList() {
               placeholder="Search by username..."
             />
             <div className="max-h-60 overflow-y-auto">
-              {friendResults.map((u) => (
-                <div key={u.id} className="flex items-center justify-between p-2 hover:bg-[#383a40] rounded cursor-pointer" onClick={() => startDM(u.id)}>
-                  <div className="flex items-center gap-2">
+              {friendResults.map((u) => {
+                const fs = friendStatuses[u.id];
+                const iSentRequest = fs;
+                return (
+                <div key={u.id} className="flex items-center justify-between p-2 hover:bg-[#383a40] rounded cursor-pointer">
+                  <div className="flex items-center gap-2" onClick={() => useStore.getState().setProfileUser({ id: u.id, username: u.username, avatar: u.avatar, status: u.status || 'offline' })}>
                     <div className="w-8 h-8 rounded-full bg-[#5865f2] flex items-center justify-center text-white text-xs font-bold">
                       {u.username[0].toUpperCase()}
                     </div>
                     <span className="text-white text-sm">{u.username}</span>
                   </div>
-                  <button className="text-xs bg-[#5865f2] text-white px-2 py-1 rounded hover:bg-[#4752c4]">Message</button>
+                  {fs === 'accepted' ? (
+                    <button onClick={() => startDM(u.id)} className="text-xs bg-[#5865f2] text-white px-2 py-1 rounded hover:bg-[#4752c4]">Message</button>
+                  ) : fs === 'pending' ? (
+                    <span className="text-xs text-yellow-400 px-2 py-1">Pending</span>
+                  ) : (
+                    <button onClick={async () => { try { await friendAPI.request(u.id); searchUsers(friendQuery); } catch(_) {} }} className="text-xs bg-[#2b2d31] hover:bg-[#35373c] text-[#dbdee1] px-2 py-1 rounded transition">+ Add Friend</button>
+                  )}
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         </div>

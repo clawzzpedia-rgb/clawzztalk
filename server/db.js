@@ -94,6 +94,16 @@ function initDb() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS friends (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      friend_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      action_user_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, friend_id)
+    );
+
     CREATE TABLE IF NOT EXISTS recordings (
       id TEXT PRIMARY KEY,
       channel_id TEXT,

@@ -31,6 +31,7 @@ app.use('/api/messages', require('./routes/messages'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/friends', require('./routes/friends'));
 
 io.use(authenticateSocket);
 
