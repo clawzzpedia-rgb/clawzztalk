@@ -1,52 +1,137 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import useStore from '../store';
 import { messageAPI } from '../api';
 import Message from './Message';
 import MessageInput from './MessageInput';
 import { Phone, Video, Users, Mic } from 'lucide-react';
 
+function notifyUser(title, body) {
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body, icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>' });
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission();
+  }
+}
+
+function playRing() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 440;
+    gain.gain.value = 0.3;
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+    osc.stop(ctx.currentTime + 0.8);
+    setTimeout(() => {
+      const ctx2 = new (window.AudioContext || window.webkitAudioContext)();
+      const osc2 = ctx2.createOscillator();
+      const gain2 = ctx2.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx2.destination);
+      osc2.frequency.value = 660;
+      gain2.gain.value = 0.3;
+      osc2.start();
+      gain2.gain.exponentialRampToValueAtTime(0.01, ctx2.currentTime + 0.8);
+      osc2.stop(ctx2.currentTime + 0.8);
+    }, 200);
+  } catch (_) {}
+}
+
+function playMsgSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 520;
+    osc.type = 'sine';
+    gain.gain.value = 0.15;
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+    osc.stop(ctx.currentTime + 0.15);
+  } catch (_) {}
+}
+
 export default function ChatArea() {
   const { currentChannel, currentDM, messages, setMessages, socket, user, currentServer, onlineUsers, recordingChannels } = useStore();
   const [loading, setLoading] = useState(false);
-  const [members, setMembers] = useState([]);
   const [showMembers, setShowMembers] = useState(false);
-  const bottomRef = useRef(null);
   const [typing, setTyping] = useState([]);
+  const bottomRef = useRef(null);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    });
+  }, []);
+
+  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
   useEffect(() => {
     setMessages([]);
     if (currentChannel) {
       setLoading(true);
-      messageAPI.getChannel(currentChannel.id).then((res) => {
-        setMessages(res.data);
-        setLoading(false);
-      });
+      messageAPI.getChannel(currentChannel.id)
+        .then((res) => { setMessages(res.data); setLoading(false); })
+        .catch(() => setLoading(false));
     } else if (currentDM) {
       setLoading(true);
-      messageAPI.getDM(currentDM.dm_id).then((res) => {
-        setMessages(res.data);
-        setLoading(false);
-      });
+      messageAPI.getDM(currentDM.dm_id)
+        .then((res) => { setMessages(res.data); setLoading(false); })
+        .catch(() => setLoading(false));
     }
   }, [currentChannel?.id, currentDM?.dm_id]);
 
+  const handlerRef = useRef(null);
+
   useEffect(() => {
     if (!socket) return;
-    const handler = (data) => {
-      if (data.channel_id === currentChannel?.id) {
-        if (data.typing) {
-          setTyping((prev) => [...new Set([...prev, data.user])]);
-        } else {
-          setTyping((prev) => prev.filter((u) => u !== data.user));
+
+    if (handlerRef.current) {
+      socket.off('message:new', handlerRef.current);
+      socket.off('dm:new', handlerRef.current);
+      socket.off('typing:update', handlerRef.current);
+    }
+
+    handlerRef.current = (msg) => {
+      if (msg.channel_id && msg.channel_id === currentChannel?.id) {
+        setMessages((prev) => { if (prev.some(m => m.id === msg.id)) return prev; return [...prev, msg]; });
+        if (msg.user_id !== user?.id) {
+          playMsgSound();
+          notifyUser(msg.username || 'Someone', msg.content || 'Sent a file');
+        }
+      } else if (msg.dm_id && msg.dm_id === currentDM?.dm_id) {
+        setMessages((prev) => { if (prev.some(m => m.id === msg.id)) return prev; return [...prev, msg]; });
+        if (msg.user_id !== user?.id) {
+          playMsgSound();
+          notifyUser(msg.username || 'Someone', msg.content || 'Sent a file');
         }
       }
     };
-    socket.on('typing:update', handler);
 
+    socket.on('message:new', handlerRef.current);
+    socket.on('dm:new', handlerRef.current);
+
+    return () => {
+      if (handlerRef.current) {
+        socket.off('message:new', handlerRef.current);
+        socket.off('dm:new', handlerRef.current);
+      }
+    };
+  }, [socket, currentChannel?.id, currentDM?.dm_id, user?.id]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const typingHandler = (data) => {
+      if (data.channel_id === currentChannel?.id) {
+        if (data.typing) setTyping((prev) => [...new Set([...prev, data.user])]);
+        else setTyping((prev) => prev.filter((u) => u !== data.user));
+      }
+    };
     const recStart = (data) => {
       useStore.getState().setRecordingChannels(
         [...useStore.getState().recordingChannels.filter(r => r.channel_id !== data.channel_id), data]
@@ -57,11 +142,11 @@ export default function ChatArea() {
         useStore.getState().recordingChannels.filter(r => r.channel_id !== data.channel_id)
       );
     };
+    socket.on('typing:update', typingHandler);
     socket.on('admin:recording-start', recStart);
     socket.on('admin:recording-stop', recStop);
-
     return () => {
-      socket.off('typing:update', handler);
+      socket.off('typing:update', typingHandler);
       socket.off('admin:recording-start', recStart);
       socket.off('admin:recording-stop', recStop);
     };
@@ -69,23 +154,10 @@ export default function ChatArea() {
 
   useEffect(() => {
     if (!socket) return;
-    const handler = (msg) => {
-      if (msg.channel_id === currentChannel?.id) {
-        setMessages((prev) => [...prev, msg]);
-      }
-    };
-    const handlerDM = (msg) => {
-      if (msg.dm_id === currentDM?.dm_id) {
-        setMessages((prev) => [...prev, msg]);
-      }
-    };
-    socket.on('message:new', handler);
-    socket.on('dm:new', handlerDM);
-    return () => {
-      socket.off('message:new', handler);
-      socket.off('dm:new', handlerDM);
-    };
-  }, [socket, currentChannel?.id, currentDM?.dm_id]);
+    const callIncoming = () => playRing();
+    socket.on('call:incoming', callIncoming);
+    return () => socket.off('call:incoming', callIncoming);
+  }, [socket]);
 
   const startCall = (type) => {
     if (!currentDM || !socket) return;
@@ -147,18 +219,10 @@ export default function ChatArea() {
 
       {currentDM && (
         <div className="absolute top-12 right-4 z-10 flex gap-1">
-          <button
-            onClick={() => startCall('audio')}
-            className="p-2 bg-[#2b2d31] hover:bg-[#35373c] rounded-full text-[#6d6f78] hover:text-green-400 transition"
-            title="Voice Call"
-          >
+          <button onClick={() => startCall('audio')} className="p-2 bg-[#2b2d31] hover:bg-[#35373c] rounded-full text-[#6d6f78] hover:text-green-400 transition" title="Voice Call">
             <Phone className="w-4 h-4" />
           </button>
-          <button
-            onClick={() => startCall('video')}
-            className="p-2 bg-[#2b2d31] hover:bg-[#35373c] rounded-full text-[#6d6f78] hover:text-green-400 transition"
-            title="Video Call"
-          >
+          <button onClick={() => startCall('video')} className="p-2 bg-[#2b2d31] hover:bg-[#35373c] rounded-full text-[#6d6f78] hover:text-green-400 transition" title="Video Call">
             <Video className="w-4 h-4" />
           </button>
         </div>
@@ -166,11 +230,7 @@ export default function ChatArea() {
 
       {currentServer && (
         <div className="absolute top-12 right-4 z-10">
-          <button
-            onClick={() => setShowMembers(!showMembers)}
-            className="p-2 bg-[#2b2d31] hover:bg-[#35373c] rounded-full text-[#6d6f78] hover:text-white transition"
-            title="Show Members"
-          >
+          <button onClick={() => setShowMembers(!showMembers)} className="p-2 bg-[#2b2d31] hover:bg-[#35373c] rounded-full text-[#6d6f78] hover:text-white transition" title="Show Members">
             <Users className="w-4 h-4" />
           </button>
         </div>
@@ -184,12 +244,8 @@ export default function ChatArea() {
           {currentServer.members?.map((m) => (
             <div key={m.id} className="flex items-center gap-2 px-3 py-2 hover:bg-[#35373c]">
               <div className="relative">
-                <div className="w-8 h-8 rounded-full bg-[#5865f2] flex items-center justify-center text-white text-xs font-bold">
-                  {m.username[0].toUpperCase()}
-                </div>
-                {(m.status === 'online' || isOnline(m.id)) && (
-                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-[#2b2d31]" />
-                )}
+                <div className="w-8 h-8 rounded-full bg-[#5865f2] flex items-center justify-center text-white text-xs font-bold">{m.username[0].toUpperCase()}</div>
+                {(m.status === 'online' || isOnline(m.id)) && <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-[#2b2d31]" />}
               </div>
               <div>
                 <p className="text-white text-sm">{m.username}</p>

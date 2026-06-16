@@ -35,21 +35,19 @@ app.use('/api/admin', require('./routes/admin'));
 io.use(authenticateSocket);
 
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.user.username}`);
+  console.log(`[WS] ${socket.user.username} connected (${socket.id})`);
   activeUsers.set(socket.user.id, { socketId: socket.id, username: socket.user.username });
+  socket.join(socket.user.id);
   io.emit('users:online', Array.from(activeUsers.keys()));
 
-  socket.on('join:server', (serverId) => {
-    socket.join(`server:${serverId}`);
-  });
+  const toUser = (userId, event, data) => {
+    const target = activeUsers.get(userId);
+    if (target) io.to(target.socketId).emit(event, data);
+  };
 
-  socket.on('join:channel', (channelId) => {
-    socket.join(`channel:${channelId}`);
-  });
-
-  socket.on('join:dm', (dmId) => {
-    socket.join(`dm:${dmId}`);
-  });
+  socket.on('join:server', (serverId) => socket.join(`server:${serverId}`));
+  socket.on('join:channel', (channelId) => socket.join(`channel:${channelId}`));
+  socket.on('join:dm', (dmId) => socket.join(`dm:${dmId}`));
 
   socket.on('message:send', (data) => {
     io.to(`channel:${data.channel_id}`).emit('message:new', data);
@@ -71,32 +69,32 @@ io.on('connection', (socket) => {
     socket.to(`channel:${data.channel_id}`).emit('typing:update', { user: socket.user.username, channel_id: data.channel_id, typing: false });
   });
 
+  socket.on('call:start', (data) => {
+    toUser(data.targetId, 'call:incoming', { from: socket.user.id, fromUsername: socket.user.username, type: data.type || 'audio' });
+  });
+
   socket.on('call:offer', (data) => {
-    socket.to(data.targetId).emit('call:offer', { offer: data.offer, from: socket.user.id, fromUsername: socket.user.username });
+    toUser(data.targetId, 'call:offer', { offer: data.offer, from: socket.user.id, fromUsername: socket.user.username });
   });
 
   socket.on('call:answer', (data) => {
-    socket.to(data.targetId).emit('call:answer', { answer: data.answer, from: socket.user.id });
+    toUser(data.targetId, 'call:answer', { answer: data.answer, from: socket.user.id });
   });
 
   socket.on('call:ice-candidate', (data) => {
-    socket.to(data.targetId).emit('call:ice-candidate', { candidate: data.candidate, from: socket.user.id });
-  });
-
-  socket.on('call:start', (data) => {
-    socket.to(data.targetId).emit('call:incoming', { from: socket.user.id, fromUsername: socket.user.username, type: data.type || 'audio' });
+    toUser(data.targetId, 'call:ice-candidate', { candidate: data.candidate, from: socket.user.id });
   });
 
   socket.on('call:end', (data) => {
-    socket.to(data.targetId).emit('call:ended', { from: socket.user.id });
+    toUser(data.targetId, 'call:ended', { from: socket.user.id });
   });
 
   socket.on('call:accept', (data) => {
-    socket.to(data.targetId).emit('call:accepted', { from: socket.user.id });
+    toUser(data.targetId, 'call:accepted', { from: socket.user.id });
   });
 
   socket.on('call:reject', (data) => {
-    socket.to(data.targetId).emit('call:rejected', { from: socket.user.id });
+    toUser(data.targetId, 'call:rejected', { from: socket.user.id });
   });
 
   socket.on('admin:recording-start', (data) => {
@@ -108,7 +106,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.user.username}`);
+    console.log(`[WS] ${socket.user.username} disconnected`);
     activeUsers.delete(socket.user.id);
     io.emit('users:online', Array.from(activeUsers.keys()));
   });

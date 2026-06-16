@@ -3,6 +3,7 @@ import useStore from './store';
 import { authAPI } from './api';
 import Auth from './components/Auth';
 import MainApp from './components/MainApp';
+import ErrorBoundary from './components/ErrorBoundary';
 
 export default function App() {
   const { user, token, setUser, connectSocket } = useStore();
@@ -14,10 +15,15 @@ export default function App() {
           setUser(res.data);
           connectSocket();
         })
-        .catch(() => useStore.getState().logout());
+        .catch(() => {
+          useStore.getState().logout();
+        });
     }
   }, []);
 
-  if (!user) return <Auth />;
-  return <MainApp />;
+  return (
+    <ErrorBoundary>
+      {!user ? <Auth /> : <MainApp />}
+    </ErrorBoundary>
+  );
 }

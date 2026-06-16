@@ -31,8 +31,9 @@ const useStore = create((set, get) => ({
 
   logout: () => {
     localStorage.removeItem('token');
-    if (get().socket) get().socket.disconnect();
-    set({ user: null, token: null, servers: [], currentServer: null, currentChannel: null, currentDM: null, dms: [], messages: [], socket: null, showAdmin: false });
+    const s = get().socket;
+    if (s) { s.removeAllListeners(); s.disconnect(); }
+    set({ user: null, token: null, servers: [], currentServer: null, currentChannel: null, currentDM: null, dms: [], messages: [], socket: null, showAdmin: false, callState: null, incomingCall: null });
   },
 
   connectSocket: () => {
@@ -41,36 +42,23 @@ const useStore = create((set, get) => ({
 
     const socket = io('/', {
       auth: { token },
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000
     });
 
     socket.on('connect', () => console.log('[WS] Connected'));
-    socket.on('connect_error', (err) => console.error('[WS] Error:', err.message));
-
-    socket.on('message:new', (msg) => {
-      const { currentChannel, messages } = get();
-      if (msg.channel_id === currentChannel?.id) set({ messages: [...messages, msg] });
-    });
-
-    socket.on('message:removed', (data) => {
-      set({ messages: get().messages.filter(m => m.id !== data.message_id) });
-    });
-
-    socket.on('dm:new', (msg) => {
-      const { currentDM, messages } = get();
-      if (msg.dm_id === currentDM?.dm_id) set({ messages: [...messages, msg] });
-    });
 
     socket.on('call:incoming', (data) => set({ incomingCall: data }));
-    socket.on('call:ended', () => set({ callState: null, incomingCall: null }));
-    socket.on('call:accepted', () => set((s) => ({ callState: { ...s.callState, peerAccepted: true } })));
+    socket.on('call:ended', () => { set({ callState: null, incomingCall: null }); });
+    socket.on('call:accepted', () => set((s) => ({ callState: s.callState ? { ...s.callState, peerAccepted: true } : null })));
     socket.on('call:rejected', () => set({ callState: null, incomingCall: null }));
     socket.on('users:online', (users) => set({ onlineUsers: users }));
 
     socket.on('admin:recording-start', (data) => {
       set((s) => ({ recordingChannels: [...s.recordingChannels.filter(r => r.channel_id !== data.channel_id), data] }));
     });
-
     socket.on('admin:recording-stop', (data) => {
       set((s) => ({ recordingChannels: s.recordingChannels.filter(r => r.channel_id !== data.channel_id) }));
     });
@@ -94,7 +82,6 @@ const useStore = create((set, get) => ({
   },
   setDMs: (dms) => set({ dms }),
   setMessages: (messages) => set({ messages }),
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
   setOnlineUsers: (users) => set({ onlineUsers: users }),
   setLoading: (loading) => set({ loading }),
   setCallState: (callState) => set({ callState }),
