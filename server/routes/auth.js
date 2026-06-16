@@ -34,11 +34,17 @@ router.post('/login', (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) return res.status(400).json({ error: 'Invalid credentials' });
 
+    if (user.banned) return res.status(403).json({ error: 'Account suspended' });
+
     const match = bcrypt.compareSync(password, user.password);
     if (!match) return res.status(400).json({ error: 'Invalid credentials' });
 
+    db.prepare('INSERT INTO login_logs (id, user_id, ip, user_agent) VALUES (?, ?, ?, ?)').run(
+      uuidv4(), user.id, req.ip || req.headers['x-forwarded-for'] || null, req.headers['user-agent'] || null
+    );
+
     const token = generateToken({ id: user.id, username: user.username });
-    res.json({ token, user: { id: user.id, username: user.username, email: user.email, avatar: user.avatar, status: user.status } });
+    res.json({ token, user: { id: user.id, username: user.username, email: user.email, avatar: user.avatar, status: user.status, is_admin: !!user.is_admin } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -47,7 +53,9 @@ router.post('/login', (req, res) => {
 router.get('/me', authenticateToken, (req, res) => {
   try {
     const db = getDb();
-    const user = db.prepare('SELECT id, username, email, avatar, status, created_at FROM users WHERE id = ?').get(req.user.id);
+    const user = db.prepare('SELECT id, username, email, avatar, status, is_admin, banned, created_at FROM users WHERE id = ?').get(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.banned) return res.status(403).json({ error: 'Account suspended' });
     res.json(user);
   } catch (e) {
     res.status(500).json({ error: e.message });

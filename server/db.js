@@ -1,12 +1,10 @@
 const Database = require('better-sqlite3');
 const path = require('path');
-const fs = require('fs');
 
 let db;
 
 function getDb() {
   if (db) return db;
-
   const dbPath = path.join(__dirname, '..', 'data.db');
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
@@ -25,6 +23,8 @@ function initDb() {
       password TEXT NOT NULL,
       avatar TEXT DEFAULT NULL,
       status TEXT DEFAULT 'offline',
+      is_admin INTEGER DEFAULT 0,
+      banned INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -84,7 +84,43 @@ function initDb() {
       file_type TEXT DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS login_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ip TEXT DEFAULT NULL,
+      user_agent TEXT DEFAULT NULL,
+      action TEXT DEFAULT 'login',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS recordings (
+      id TEXT PRIMARY KEY,
+      channel_id TEXT,
+      server_id TEXT,
+      started_by TEXT NOT NULL,
+      file_url TEXT,
+      duration INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
+
+  const count = d.prepare('SELECT COUNT(*) as c FROM users').get();
+  if (count.c === 0) {
+    const bcrypt = require('bcryptjs');
+    const { v4: uuidv4 } = require('uuid');
+    const hash = bcrypt.hashSync('admin123', 10);
+    const id = uuidv4();
+    d.prepare('INSERT INTO users (id, username, email, password, is_admin) VALUES (?, ?, ?, ?, 1)').run(id, 'admin', 'admin@clawzztalk.xyz', hash);
+    console.log('Admin account created — email: admin@clawzztalk.xyz / password: admin123');
+  }
+
+  const hasAdmin = d.prepare('SELECT COUNT(*) as c FROM users WHERE is_admin = 1').get();
+  if (hasAdmin.c === 0) {
+    d.prepare('UPDATE users SET is_admin = 1 ORDER BY created_at ASC LIMIT 1').run();
+    console.log('First user promoted to admin');
+  }
 
   console.log('Database initialized');
 }

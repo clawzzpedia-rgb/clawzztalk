@@ -3,10 +3,10 @@ import useStore from '../store';
 import { messageAPI } from '../api';
 import Message from './Message';
 import MessageInput from './MessageInput';
-import { Phone, Video, Users } from 'lucide-react';
+import { Phone, Video, Users, Mic } from 'lucide-react';
 
 export default function ChatArea() {
-  const { currentChannel, currentDM, messages, setMessages, socket, user, currentServer, onlineUsers } = useStore();
+  const { currentChannel, currentDM, messages, setMessages, socket, user, currentServer, onlineUsers, recordingChannels } = useStore();
   const [loading, setLoading] = useState(false);
   const [members, setMembers] = useState([]);
   const [showMembers, setShowMembers] = useState(false);
@@ -46,7 +46,25 @@ export default function ChatArea() {
       }
     };
     socket.on('typing:update', handler);
-    return () => socket.off('typing:update', handler);
+
+    const recStart = (data) => {
+      useStore.getState().setRecordingChannels(
+        [...useStore.getState().recordingChannels.filter(r => r.channel_id !== data.channel_id), data]
+      );
+    };
+    const recStop = (data) => {
+      useStore.getState().setRecordingChannels(
+        useStore.getState().recordingChannels.filter(r => r.channel_id !== data.channel_id)
+      );
+    };
+    socket.on('admin:recording-start', recStart);
+    socket.on('admin:recording-stop', recStop);
+
+    return () => {
+      socket.off('typing:update', handler);
+      socket.off('admin:recording-start', recStart);
+      socket.off('admin:recording-stop', recStop);
+    };
   }, [socket, currentChannel?.id]);
 
   useEffect(() => {
@@ -108,6 +126,16 @@ export default function ChatArea() {
         ))}
         <div ref={bottomRef} />
       </div>
+
+      {currentChannel && recordingChannels.some(r => r.channel_id === currentChannel.id) && (
+        <div className="px-4 py-1.5 bg-red-900/20 border-t border-red-900/30 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <span className="text-red-400 text-xs font-semibold">
+            {recordingChannels.find(r => r.channel_id === currentChannel.id)?.started_by || 'Admin'} is recording this channel
+          </span>
+          <Mic className="w-3 h-3 text-red-400" />
+        </div>
+      )}
 
       {typing.length > 0 && (
         <div className="px-4 py-1 text-xs text-[#6d6f78] italic">

@@ -30,6 +30,7 @@ app.use('/api/channels', require('./routes/channels'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/admin', require('./routes/admin'));
 
 io.use(authenticateSocket);
 
@@ -96,6 +97,14 @@ io.on('connection', (socket) => {
 
   socket.on('call:reject', (data) => {
     socket.to(data.targetId).emit('call:rejected', { from: socket.user.id });
+  });
+
+  socket.on('admin:recording-start', (data) => {
+    io.to(`channel:${data.channel_id}`).emit('admin:recording-start', data);
+  });
+
+  socket.on('admin:recording-stop', (data) => {
+    io.to(`channel:${data.channel_id}`).emit('admin:recording-stop', data);
   });
 
   socket.on('disconnect', () => {
