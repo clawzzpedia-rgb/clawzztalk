@@ -8,21 +8,25 @@ export default function VideoCall() {
   const peerRef = useRef(null);
   const localRef = useRef(null);
   const remoteRef = useRef(null);
+  const streamRef = useRef(null);
+  const iceQueue = useRef([]);
+  const mountedRef = useRef(true);
   const [muted, setMuted] = useState(false);
   const [videoOff, setVideoOff] = useState(false);
   const [screenShare, setScreenShare] = useState(false);
-  const [stream, setStream] = useState(null);
   const [connecting, setConnecting] = useState(true);
   const [error, setError] = useState('');
-  const iceQueue = useRef([]);
 
   const cleanup = useCallback(() => {
-    if (stream) stream.getTracks().forEach((t) => t.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
     if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
     iceQueue.current = [];
     setCallState(null);
     setIncomingCall(null);
-  }, [stream, setCallState, setIncomingCall]);
+  }, [setCallState, setIncomingCall]);
 
   const flushIce = useCallback(() => {
     while (iceQueue.current.length && peerRef.current) {
@@ -31,12 +35,14 @@ export default function VideoCall() {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     const isInitiator = callState?.direction === 'outgoing';
     const targetId = callState?.targetId || incomingCall?.from;
 
     navigator.mediaDevices.getUserMedia({ audio: true, video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } })
       .then((s) => {
-        setStream(s);
+        if (!mountedRef.current) { s.getTracks().forEach((t) => t.stop()); return; }
+        streamRef.current = s;
         if (localRef.current) localRef.current.srcObject = s;
 
         const peer = new SimplePeer({
@@ -68,10 +74,7 @@ export default function VideoCall() {
           socket?.emit(channel, emitData);
         });
 
-        peer.on('connect', () => {
-          setConnecting(false);
-          setError('');
-        });
+        peer.on('connect', () => { if (mountedRef.current) { setConnecting(false); setError(''); } });
 
         peer.on('stream', (remoteStream) => {
           if (remoteRef.current) {
@@ -81,34 +84,39 @@ export default function VideoCall() {
         });
 
         peer.on('close', () => cleanup());
-        peer.on('error', (e) => { setError('Connection lost: ' + e.message); });
+        peer.on('error', (e) => { if (mountedRef.current) setError('Connection lost: ' + e.message); });
 
         peerRef.current = peer;
         flushIce();
       })
       .catch((e) => {
-        setError('Camera/mic access denied: ' + e.message);
-        setTimeout(() => cleanup(), 3000);
+        if (!mountedRef.current) return;
+        setError(e.name === 'NotAllowedError' ? 'Camera/mic access denied. Check browser permissions.' : e.name === 'NotFoundError' ? 'No camera/mic found.' : 'Media error: ' + e.message);
+        setTimeout(() => { if (mountedRef.current) cleanup(); }, 3000);
       });
 
-    const handleSignal = (prefix, extract) => (data) => {
+    const handleSignal = (extract) => (data) => {
       if (data.from === targetId) {
-        if (peerRef.current) {
-          peerRef.current.signal(extract(data));
-        } else {
-          iceQueue.current.push(extract(data));
-        }
+        if (peerRef.current) peerRef.current.signal(extract(data));
+        else iceQueue.current.push(extract(data));
       }
     };
 
-    socket?.on('call:offer', handleSignal('offer', (d) => d.offer));
-    socket?.on('call:answer', handleSignal('answer', (d) => d.answer));
-    socket?.on('call:ice-candidate', handleSignal('ice', (d) => d.candidate));
+    socket?.on('call:offer', handleSignal((d) => d.offer));
+    socket?.on('call:answer', handleSignal((d) => d.answer));
+    socket?.on('call:ice-candidate', handleSignal((d) => d.candidate));
 
     return () => {
+      mountedRef.current = false;
       socket?.off('call:offer');
       socket?.off('call:answer');
       socket?.off('call:ice-candidate');
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
+      iceQueue.current = [];
     };
   }, []);
 
@@ -120,7 +128,10 @@ export default function VideoCall() {
       if (sender) sender.replaceTrack(newTrack);
     });
     if (localRef.current) localRef.current.srcObject = newStream;
-    setStream(newStream);
+    if (newStream !== streamRef.current) {
+      if (streamRef.current) streamRef.current.getVideoTracks().forEach((t) => t.stop());
+      streamRef.current = newStream;
+    }
   };
 
   const toggleScreenShare = async () => {
@@ -147,23 +158,23 @@ export default function VideoCall() {
 
   const endCall = useCallback(() => {
     const targetId = callState?.targetId || incomingCall?.from;
-    socket?.emit('call:end', { targetId });
+    if (targetId) socket?.emit('call:end', { targetId });
     cleanup();
   }, [callState, incomingCall, socket, cleanup]);
 
   const toggleMute = useCallback(() => {
-    if (stream) {
-      stream.getAudioTracks().forEach((t) => { t.enabled = muted; });
+    if (streamRef.current) {
+      streamRef.current.getAudioTracks().forEach((t) => { t.enabled = muted; });
       setMuted(!muted);
     }
-  }, [stream, muted]);
+  }, [muted]);
 
   const toggleVideo = useCallback(() => {
-    if (stream) {
-      stream.getVideoTracks().forEach((t) => { t.enabled = videoOff; });
+    if (streamRef.current) {
+      streamRef.current.getVideoTracks().forEach((t) => { t.enabled = videoOff; });
       setVideoOff(!videoOff);
     }
-  }, [stream, videoOff]);
+  }, [videoOff]);
 
   return (
     <div className="absolute inset-0 z-40 bg-black flex flex-col">
