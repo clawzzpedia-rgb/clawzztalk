@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import useStore from '../store';
+import useStore, { takePendingStream } from '../store';
 import SimplePeer from 'simple-peer';
 import { PhoneOff, Mic, MicOff, Volume2 } from 'lucide-react';
 
@@ -27,10 +27,11 @@ export default function VoiceCall() {
   }, [setCallState, setIncomingCall]);
 
   useEffect(() => {
+    try {
     mountedRef.current = true;
     const isInitiator = callState?.direction === 'outgoing';
     const targetId = callState?.targetId || incomingCall?.from;
-    let stream = callState?.stream || incomingCall?.stream;
+    let stream = takePendingStream();
     const startPeer = (s) => {
       streamRef.current = s;
       if (localAudioRef.current) localAudioRef.current.srcObject = s;
@@ -114,6 +115,7 @@ export default function VoiceCall() {
       if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
       iceQueue.current = [];
     };
+    } catch(e) { setError('Call error: ' + (e?.message || e)); }
   }, []);
 
   const endCall = useCallback(() => {

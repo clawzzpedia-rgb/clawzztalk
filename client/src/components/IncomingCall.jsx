@@ -1,5 +1,5 @@
 import React from 'react';
-import useStore from '../store';
+import useStore, { setPendingStream } from '../store';
 import { Phone, PhoneOff, Video } from 'lucide-react';
 
 export default function IncomingCall() {
@@ -10,7 +10,8 @@ export default function IncomingCall() {
       const t = type || incomingCall?.type || 'audio';
       const constraints = t === 'video' ? { audio: true, video: true } : { audio: true };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      setCallState({ type: t, targetId: incomingCall.from, stream, active: false, peerAccepted: false, direction: 'incoming' });
+      setPendingStream(stream);
+      setCallState({ type: t, targetId: incomingCall.from, active: false, peerAccepted: false, direction: 'incoming' });
       socket?.emit('call:accept', { targetId: incomingCall.from });
       setIncomingCall(null);
     } catch (e) {
