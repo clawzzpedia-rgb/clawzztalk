@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import useStore, { takePendingStream } from '../store';
+import useStore from '../store';
 import SimplePeer from 'simple-peer';
 import { PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, MonitorOff } from 'lucide-react';
 
@@ -39,7 +39,8 @@ export default function VideoCall() {
     mountedRef.current = true;
     const isInitiator = callState?.direction === 'outgoing';
     const targetId = callState?.targetId || incomingCall?.from;
-    let stream = takePendingStream();
+    let stream = window.__callStream;
+    window.__callStream = null;
 
     const startPeer = (s) => {
       streamRef.current = s;

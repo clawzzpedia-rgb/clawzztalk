@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import useStore, { setPendingStream } from '../store';
+import useStore from '../store';
 import { messageAPI } from '../api';
 import Message from './Message';
 import MessageInput from './MessageInput';
@@ -159,7 +159,7 @@ export default function ChatArea() {
     try {
       const constraints = type === 'video' ? { audio: true, video: true } : { audio: true };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      setPendingStream(stream);
+      window.__callStream = stream;
       useStore.getState().setCallState({ type, targetId, active: false, peerAccepted: false, direction: 'outgoing' });
       socket.emit('call:start', { targetId, type });
     } catch (e) {

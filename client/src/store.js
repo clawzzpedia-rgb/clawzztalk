@@ -136,8 +136,4 @@ const useStore = create((set, get) => ({
   setRecordingChannels: (recordingChannels) => set({ recordingChannels })
 }));
 
-export let pendingStream = null;
-export function setPendingStream(s) { pendingStream = s; }
-export function takePendingStream() { const s = pendingStream; pendingStream = null; return s; }
-
 export default useStore;
